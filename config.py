@@ -12,6 +12,9 @@ BARYON_FEEDBACK = False
 # which Baryon Feedback model to use (halofit or hmcode)
 MODE = 'hmcode'
 
+# settings for neutrino
+NEUTRINO_SETTINGS = {'N_ncdm': 1.0, 'deg_ncdm': 3.0, 'T_ncdm': 0.71611, 'N_ur': 0.00641}
+
 if not NEUTRINO:
 
     # fixed neutrino mass
