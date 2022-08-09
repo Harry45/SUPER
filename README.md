@@ -1,2 +1,4 @@
 # SUPER
-Scalable Gaussian Process Emulator
+
+The main SUPER (Scalable gaUssian Process EmulatoR) is to build a scalable
+algorithm for emulation.
