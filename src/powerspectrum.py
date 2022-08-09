@@ -39,12 +39,14 @@ def class_compute(cosmology: dict):
     if CONFIG.NEUTRINO:
         class_module.set({'m_ncdm': cosmology['M_tot'] / CONFIG.NEUTRINO_SETTINGS['deg_ncdm']})
 
+        # CLASS does not take M_tot and we have already passed the neutrino mass
+        # to CLASS, so we need to remove it from the dictionary.
+        cosmo = {i: cosmology[i] for i in cosmology if i != 'M_tot'}
+
     else:
         class_module.set({'m_ncdm': CONFIG.FIXED_NM['M_tot'] / CONFIG.NEUTRINO_SETTINGS['deg_ncdm']})
 
     # set basic configurations for Class
-    cosmo = {k: cosmology[k] for k in CONFIG.PARAMS}
-
     class_module.set(cosmo)
 
     # compute the important quantities

@@ -110,9 +110,10 @@ PARAMS = ['omega_cdm', 'omega_b', 'ln10^{10}A_s', 'n_s', 'h']
 
 # choose which parameters to marginalise over
 if NEUTRINO:
+    PARAMS += ['M_tot']
     PRIORS['M_tot'] = {'distribution': 'uniform', 'specs': [0.01, 0.99]}
 
 if BARYON_FEEDBACK and MODE == 'hmcode':
     CLASS_ARGS['non linear'] = MODE
-    PRIORS['c_min'] = {'distribution': 'uniform', 'specs': [2.0, 3.13]}
+    PRIORS['c_min'] = {'distribution': 'uniform', 'specs': [2.0, 1.13]}
     PARAMS += ['c_min']
