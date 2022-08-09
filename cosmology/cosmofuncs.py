@@ -24,10 +24,10 @@ def analytical_baryon_feedback(wavenumber: np.ndarray, redshift: np.ndarray, amp
 
     model = CONFIG.BARYON_MODEL
 
-    # k is expected in h/Mpc and is divided in log by this unit...
+    # k is expected in h/Mpc
     x_wav = np.log10(wavenumber)
 
-    # calculate  the scale factor, a
+    # calculate the scale factor, a
     a_factor = 1. / (1. + redshift)
 
     # a squared

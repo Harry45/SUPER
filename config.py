@@ -7,7 +7,7 @@ Authors: Rory Allen, Arrykrishna Mootoovaloo
 NEUTRINO = True
 
 # whether we want to include baryon feedback model in the pipeline
-BARYON_FEEDBACK = False
+BARYON_FEEDBACK = True
 
 # which Baryon Feedback model to use (halofit or hmcode)
 MODE = 'hmcode'
@@ -58,17 +58,14 @@ ZMIN = 0.0
 # maximum redshift
 ZMAX = 5.0
 
-# maximum of k (for quick CLASS run, set to for example, 50)
-K_MAX_H_BY_MPC = 50.
+# maximum of k (Mpc^-1)
+KMAX = 5.0
 
-# our wanted kmax
-KMAX = 50.0
-
-# minimum of k
-K_MIN_H_BY_MPC = 5E-4
+# minimum of k (Mpc^-1)
+KMIN = 5E-4
 
 # number of k
-NK = 40
+NWAVE = 40
 
 # number of redshift on the grid
 NZ = 20
@@ -88,8 +85,10 @@ K_PIVOT = 0.05
 # Big Bang Nucleosynthesis
 BBN = '/home/harry/Desktop/class/bbn/sBBN.dat'
 
-# -----------------------------------------------------------------------------
+# arguments to pass to CLASS
+CLASS_ARGS = {"output": "mPk", "P_k_max_1/Mpc": KMAX, "z_max_pk": ZMAX}
 
+# -----------------------------------------------------------------------------
 # Priors
 # specs are according to the scipy.stats. See documentation:
 # https://docs.scipy.org/doc/scipy/reference/stats.html
@@ -107,12 +106,13 @@ PRIORS = {
     'h': {'distribution': 'uniform', 'specs': [0.64, 0.18]}
 }
 
+PARAMS = ['omega_cdm', 'omega_b', 'ln10^{10}A_s', 'n_s', 'h']
+
 # choose which parameters to marginalise over
 if NEUTRINO:
     PRIORS['M_tot'] = {'distribution': 'uniform', 'specs': [0.01, 0.99]}
 
 if BARYON_FEEDBACK and MODE == 'hmcode':
+    CLASS_ARGS['non linear'] = MODE
     PRIORS['c_min'] = {'distribution': 'uniform', 'specs': [2.0, 3.13]}
-
-elif BARYON_FEEDBACK and MODE == 'halofit':
-    PRIORS['A_bary'] = {'distribution': 'uniform', 'specs': [0.0, 2.0]}
+    PARAMS += ['c_min']
