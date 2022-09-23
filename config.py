@@ -1,6 +1,9 @@
 """
 Project: Scalable Gaussian Process Emulator (SUPER) for modelling power spectra
-Authors: Rory Allen, Arrykrishna Mootoovaloo
+Author: Dr. Arrykrishna Mootoovaloo
+Date: September 2022
+Email: arrykrish@gmail.com
+Description: The main configuration file
 """
 
 # whether we want to sample the neutrino mass
@@ -117,3 +120,15 @@ if BARYON_FEEDBACK and MODE == 'hmcode':
     CLASS_ARGS['non linear'] = MODE
     PRIORS['c_min'] = {'distribution': 'uniform', 'specs': [2.0, 1.13]}
     PARAMS += ['c_min']
+
+# -----------------------------------------------------------------------------
+# Gaussian Process Settings
+
+# number of iterations
+NITER = 500
+
+# the learning rate
+LEARN_RATE = 1E-2
+
+# number of times we want to restart the optimisation
+NRESTART = 3
