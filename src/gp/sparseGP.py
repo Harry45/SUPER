@@ -9,101 +9,58 @@ Description: Sparse Gaussian Process usinf Inducing Points
 import torch
 import torch.autograd
 import numpy as np
-import src.gp.kernel as kn
+from src.gp.kernel import solve, compute, slogdeterminant
 from src.gp.transformation import PreWhiten, Normalisation
 
 
-def logdet_chol(chol_factor: torch.Tensor) -> torch.tensor:
-    """Calculates the log-determinant of a matrix, given its Cholesky factor.
+def log_marginal_likelihood(outputs: torch.Tensor, matrix: dict, sigma: torch.Tensor) -> torch.Tensor:
+    """Calculates the data-fit term
 
     Args:
-        chol_factor (torch.Tensor): the Cholesky factor
+        outputs (torch.Tensor): the training point (outputs)
+        matrix (dict): a dictionary of the three different matrices: K, Q and M
+        sigma (torch.tensor): the noise term (usually very small for noise-free regression)
 
     Returns:
-        torch.tensor: the log-determinant value
+        torch.Tensor: the data fit term (chi-square essentially)
     """
 
-    return 2 * torch.sum(torch.log(torch.diag(chol_factor)))
+    ndata = len(outputs)
+    outputs = outputs.view(ndata, 1)
+    k_matrix = matrix['k_matrix']
+    m_matrix = matrix['m_matrix']
+    q_matrix = matrix['q_matrix']
+    ninducing = m_matrix.shape[0]
 
+    # the data-fit term
+    matrix_ref = sigma**2 * m_matrix + q_matrix.t() @ q_matrix
+    dummy_matrix = torch.eye(ndata) - q_matrix @ solve(matrix_ref, q_matrix.t())
 
-def trace_term(kernel: torch.Tensor, q_matrix: torch.Tensor,
-               m_chol_matrix: torch.Tensor, sigma: torch.tensor) -> torch.Tensor:
-    """Calculates the trace term (additional regularisation term) in the
-    calculation of the marginal likelihood
+    # matrix_ref_chol = torch.linalg.cholesky_ex(matrix_ref)
+    # dummy_matrix = torch.eye(ndata) - q_matrix @ torch.cholesky_solve(q_matrix.t(), matrix_ref_chol[0])
+    chi2 = sigma**-2 * outputs.t() @ dummy_matrix @ outputs
 
-    Args:
-        kernel (torch.Tensor): the kernel matrix of size n x n
-        q_matrix (torch.Tensor): the Q matrix of size n x m
-        m_chol_matrix (torch.Tensor): the Cholesky factor of matrix M
-        sigma (torch.tensor): the noise term
+    # the trace term
+    k_tilde = k_matrix - q_matrix @ solve(m_matrix, q_matrix.t())
 
-    Returns:
-        torch.Tensor: the value of the trace term
-    """
-
-    k_tilde = kernel - q_matrix @ torch.cholesky_solve(q_matrix.t(), m_chol_matrix)
+    # m_matrix_chol = torch.linalg.cholesky_ex(m_matrix)
+    # k_tilde = k_matrix - q_matrix @ torch.cholesky_solve(q_matrix.t(), m_matrix_chol[0])
     trace = sigma**-2 * torch.trace(k_tilde)
-    return -0.5 * trace
 
+    # the log-determinant term
+    term1 = 2 * (ndata - ninducing) * torch.log(sigma)
+    term2 = slogdeterminant(matrix_ref)[1]
+    term3 = slogdeterminant(m_matrix)[1]
+    # diag2 = torch.abs(torch.diag(matrix_ref_chol[0]))
+    # diag3 = torch.abs(torch.diag(m_matrix_chol[0]))
+    # term2 = 2 * torch.sum(torch.log(diag2))
+    # term3 = 2 * torch.sum(torch.log(diag3))
 
-def determinant_term(q_matrix: torch.Tensor, m_matrix: torch.Tensor,
-                     m_chol_matrix: torch.Tensor, sigma: torch.tensor) -> torch.tensor:
-    """Calculates the log determinant term using the Matrix determinant lemma.
-    This is done so that we can work with the number of inducing points.
+    logdet = term1 + term2 - term3
+    # print(torch.linalg.eigvals(m_matrix))
+    # print(torch.linalg.eigvals(matrix_ref))
 
-    Args:
-        q_matrix (torch.Tensor): the Q matrix of size n x m
-        m_matrix (torch.Tensor): the M matrix of size M x M
-        m_chol_matrix (torch.Tensor): the Cholesky factor of matrix M
-        sigma (torch.tensor): the noise term
-
-    Returns:
-        torch.tensor: the log determinant value
-    """
-    num_data = q_matrix.shape[0]
-    sigma2_inv = sigma**-2 * torch.eye(num_data)
-    p_matrix = q_matrix.t() @ torch.mm(sigma2_inv, q_matrix) + m_matrix
-
-    p_matrix_chol = torch.linalg.cholesky(p_matrix)
-    log_det = 2 * num_data * torch.log(sigma)
-    log_det += logdet_chol(p_matrix_chol)
-    log_det -= logdet_chol(m_chol_matrix)
-    return -0.5 * log_det, p_matrix_chol
-
-
-def data_fit_term(outputs: torch.Tensor, p_matrix_chol: torch.Tensor,
-                  q_matrix: torch.Tensor, sigma: torch.tensor) -> torch.Tensor:
-    """Calculates the data-fit term given the different matrices.
-
-    Args:
-        outputs (torch.Tensor): the observed values (y in the notes)
-        p_matrix_chol (torch.Tensor): the Cholesky factor of the matrix:
-
-        sigma**-2 Q^T Q + M
-
-        q_matrix (torch.Tensor): the Q matrix of size n x m
-        sigma (torch.tensor): the noise term
-
-    Returns:
-        torch.Tensor: the data fit term
-    """
-    num_data = q_matrix.shape[0]
-
-    # reshape outputs
-    outputs = outputs.view(-1, 1)
-
-    # calculate Sigma^-1 Q
-    sigma2_inv = sigma**-2 * torch.eye(num_data)
-    sigma2_inv_q = sigma2_inv @ q_matrix
-
-    # calculate the inverse
-    term = torch.cholesky_solve(sigma2_inv_q.t(), p_matrix_chol)
-    term = sigma2_inv_q @ term
-    term = sigma2_inv - term
-
-    data_fit = -0.5 * outputs.t() @ term @ outputs
-
-    return data_fit[0, 0]
+    return -0.5 * (trace + chi2 + logdet)
 
 
 def calculate_alpha(outputs: torch.Tensor, q_matrix: torch.Tensor,
@@ -190,23 +147,19 @@ class GaussianProcess(PreWhiten, Normalisation):
             torch.Tensor: the value of the negatice log-likelihood
         """
         # covariance between training points (n x n)
-        k_matrix = kn.compute(self.xtrain, self.xtrain, parameter)
+        k_matrix = compute(self.xtrain, self.xtrain, parameter)
 
         # covariance due to the inducing points (m x m)
-        m_matrix = kn.compute(self.inducing_trans, self.inducing_trans, parameter)
+        m_matrix = compute(self.inducing_trans, self.inducing_trans, parameter)
 
         # cross covariance between training and inducing points (n x m)
-        q_matrix = kn.compute(self.xtrain, self.inducing_trans, parameter)
+        q_matrix = compute(self.xtrain, self.inducing_trans, parameter)
 
-        # calculates the Cholesky factor of matrix M
-        m_chol_factor = torch.linalg.cholesky(m_matrix)
+        # gather all matrices in a dictionary
+        matrix = {'k_matrix': k_matrix, 'm_matrix': m_matrix, 'q_matrix': q_matrix}
 
-        # calculates the different parts
-        trace = trace_term(k_matrix, q_matrix, m_chol_factor, self.sigma)
-        det, p_matrix_chol = determinant_term(q_matrix, m_matrix, m_chol_factor, self.sigma)
-        fit = data_fit_term(self.ytrain, p_matrix_chol, q_matrix, self.sigma)
-
-        return -1.0 * (trace + det + fit)
+        cost = log_marginal_likelihood(self.ytrain, matrix, self.sigma)
+        return -1.0 * cost
 
     def optimisation(self, parameters: torch.Tensor, niter: int = 10, lrate: float = 0.01, nrestart: int = 2) -> dict:
         """Optimise for the kernel hyperparameters using Adam in PyTorch.
@@ -249,7 +202,6 @@ class GaussianProcess(PreWhiten, Normalisation):
 
                 # record the loss at every step
                 record_loss.append(loss.item())
-                print(loss)
 
             dictionary[i] = {"parameters": params, "loss": record_loss}
 
@@ -262,16 +214,16 @@ class GaussianProcess(PreWhiten, Normalisation):
         # to update the matrices and compute important quantities for making
         # predictions
         # covariance due to the inducing points (m x m)
-        m_matrix = kn.compute(self.inducing_trans, self.inducing_trans, self.opt_parameters)
+        m_matrix = compute(self.inducing_trans, self.inducing_trans, self.opt_parameters)
 
         # cross covariance between training and inducing points (n x m)
-        q_matrix = kn.compute(self.xtrain, self.inducing_trans, self.opt_parameters)
-        alpha, p_matrix_chol, m_matrix_chol = calculate_alpha(self.ytrain, q_matrix, m_matrix, self.sigma)
+        q_matrix = compute(self.xtrain, self.inducing_trans, self.opt_parameters)
+        # alpha, p_matrix_chol, m_matrix_chol = calculate_alpha(self.ytrain, q_matrix, m_matrix, self.sigma)
 
-        # store all important quantities
-        self.alpha = alpha
-        self.p_matrix_chol = p_matrix_chol
-        self.m_matrix_chol = m_matrix_chol
+        # # store all important quantities
+        # self.alpha = alpha
+        # self.p_matrix_chol = p_matrix_chol
+        # self.m_matrix_chol = m_matrix_chol
 
         return dictionary
 

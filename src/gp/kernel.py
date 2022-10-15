@@ -94,3 +94,18 @@ def logdeterminant(kernel: torch.tensor) -> torch.tensor:
     logdet = torch.logdet(kernel)
 
     return logdet
+
+
+def slogdeterminant(kernel: torch.tensor) -> torch.tensor:
+    """Compute the stable log determinant of the kernel matrix.
+
+    Args:
+        kernel (torch.tensor): [N x N] kernel matrix.
+
+    Returns:
+        torch.tensor: [1 x 1] vector.
+    """
+
+    sign, logdet = torch.slogdet(kernel)
+
+    return sign, logdet
