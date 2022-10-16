@@ -32,7 +32,7 @@ def pairwise_distance(arr1: torch.tensor, arr2: torch.tensor) -> torch.tensor:
     return dist
 
 
-def compute(arr1: torch.tensor, arr2: torch.tensor, hyper: torch.tensor) -> torch.tensor:
+def compute_kernel(arr1: torch.tensor, arr2: torch.tensor, hyper: torch.tensor) -> torch.tensor:
     """Compute the kernel matrix between two sets of points.
 
     Args:
