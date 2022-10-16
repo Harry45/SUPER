@@ -133,9 +133,9 @@ def cost_exact(xpoint: torch.Tensor, ypoint: torch.Tensor,
 
 class BayesianMachine(PreWhiten, Normalisation):
 
-    def __init__(self, xsamples: torch.Tensor, ysamples: torch.Tensor, sigma: float, exact: bool, **kwargs):
+    def __init__(self, xsamples: torch.Tensor, ysamples: torch.Tensor, sigma: float, **kwargs):
 
-        self.exact = exact
+        self.exact = True
         self.ndim = xsamples.shape[1]
         self.ndata = xsamples.shape[0]
         assert (self.ndata > self.ndim), 'not enough training points or reshape tensor'
@@ -158,8 +158,9 @@ class BayesianMachine(PreWhiten, Normalisation):
         # apply normalisation to outputs
         self.ytrain = Normalisation.y_transformation(self, self.ysamples)
 
-        if not exact:
-            n_clusters = kwargs.pop('n_clusters',)
+        if 'n_clusters' in kwargs:
+            self.exact = False
+            n_clusters = kwargs.pop('n_clusters')
             self.cluster_module, self.record = clustering(self.xtrain, self.ytrain, n_clusters)
 
     def optimisation(self, parameters: torch.Tensor, niter: int = 10, lrate: float = 0.01, nrestart: int = 2) -> dict:
