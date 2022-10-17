@@ -7,18 +7,13 @@ Description: Functions related to the Gaussian Process
 """
 
 import torch
+from typing import Tuple, Union
 import numpy as np
 from sklearn.cluster import KMeans
-from torch.multiprocessing import Pool, Process, set_start_method
 
 # our script and functions
 from src.gp.kernel import solve, logdeterminant, compute_kernel
 from src.gp.transformation import PreWhiten, Normalisation
-
-try:
-    set_start_method('spawn')
-except RuntimeError:
-    pass
 
 
 def clustering(xsamples: torch.Tensor, ysamples: torch.Tensor, n_clusters: int) -> dict:
@@ -88,50 +83,6 @@ def log_marginal_likelihood(kernel: torch.Tensor, targets: torch.Tensor, jitter:
     return log_ml.view(-1)
 
 
-def log_marginal_likelihood_parallel(args: list) -> list:
-    """Calculates the log marginal likelihood in parallel.
-
-    Args:
-        args (list): a list of list consisting of the kernel, targets and jitter term.
-
-    Returns:
-        list: a list of the marginal likelihood due to each partition.
-    """
-    kernel = args[0]
-    targets = args[1]
-    jitter = args[2]
-    log_ml = log_marginal_likelihood(kernel, targets, jitter)
-    return log_ml
-
-
-def cost_parallel(record: dict, hyperparameters: torch.Tensor, jitter: float) -> torch.Tensor:
-    """Calculates the total cost given a dictionary consisting of the
-    partitioned data and the hyperparameters.
-
-    Args:
-        record (dict): A dictionary containing the partitioned data
-        hyperparameters (torch.Tensor): The kernel hyperparameter.
-        jitter (float): The jitter term for numerical stability
-
-    Returns:
-        torch.Tensor: The total cost
-    """
-    nclusters = len(record)
-    arguments = list()
-    for i in range(nclusters):
-        xpoint, ypoint = record[str(i)][0], record[str(i)][1]
-        kernel = compute_kernel(xpoint, xpoint, hyperparameters)
-        arguments.append([kernel, ypoint, jitter])
-
-    nprocesses = torch.multiprocessing.cpu_count()
-    pool = Pool(processes=nprocesses)
-    costs = pool.map(log_marginal_likelihood_parallel, arguments)
-    pool.close()
-    pool.join()
-
-    return torch.FloatTensor(costs).sum(0)
-
-
 def cost(record: dict, hyperparameters: torch.Tensor, jitter: float) -> torch.Tensor:
     """Calculates the cost function
 
@@ -172,6 +123,109 @@ def cost_exact(xpoint: torch.Tensor, ypoint: torch.Tensor,
     return log_ml
 
 
+def kernel_alpha(record: dict, parameters: torch.Tensor, jitter: float) -> Tuple[dict, dict]:
+    """Calculates the final kernel and the weights (alpha).
+
+    Args:
+        record (dict): A dictionary containing the inputs and targets.
+        parameters (torch.Tensor): The optimised parameters of the kernel
+        jitter (float): The jitter term for numerical stability
+
+    Returns:
+        Tuple[dict, dict]: A dictionary of the kernel and a dictionary of alpha
+    """
+
+    nclusters = len(record)
+    kernels = {}
+    alphas = {}
+    for i in range(nclusters):
+        xpoint, ypoint = record[str(i)][0], record[str(i)][1]
+        kernel = compute_kernel(xpoint, xpoint, parameters)
+        kernel = kernel + torch.eye(kernel.shape[0]) * jitter
+        alpha = solve(kernel, ypoint)
+        kernels[str(i)] = kernel
+        alphas[str(i)] = alpha
+
+    return kernels, alphas
+
+
+def poe_predictions(means: torch.Tensor, variances: torch.Tensor) -> dict:
+    """Calculates the mean and variance predictions using the Product of Expert method.
+
+    Args:
+        means (torch.Tensor): A tensor with the mean calculated using each expert.
+        variance (torch.Tensor): A tensor with the variance calculated using each expert.
+
+    Returns:
+        dict: A dictionary with the final mean and variance.
+    """
+    pred_var = 1. / torch.sum(1. / variances)
+    pred_mean = pred_var * torch.sum(means / variances)
+    predictions = {}
+    predictions['mean'] = pred_mean
+    predictions['variance'] = pred_var
+    return predictions
+
+
+def bcm_predictions(means: torch.Tensor, variances: torch.Tensor, prior_variance: torch.Tensor) -> dict:
+    """Calculates the mean and variance predictions using Bayesian Committee Machine
+
+    Args:
+        means (torch.Tensor): A tensor of the mean calculated from each expert.
+        variances (torch.Tensor): A tensor of the variance from each expert.
+        prior_variance (torch.Tensor): The prior variance, f* ~ N(0, A)
+
+    Returns:
+        dict: A dictionary with the final mean and variance
+    """
+    n_neighbour = len(means)
+    precision = (1. - n_neighbour) / prior_variance + torch.sum(1. / variances)
+    pred_var = 1. / precision
+    pred_mean = pred_var * torch.sum(means / variances)
+    predictions = {}
+    predictions['mean'] = pred_mean
+    predictions['variance'] = pred_var
+    return predictions
+
+
+def approximate_predictions(xtest: torch.Tensor, inputs: dict) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Calculates the approximate predictions using the experts - either PoE or BCM
+
+    Args:
+        xtest (torch.Tensor): the input test point
+        inputs (dict): a dictionary with all the relevant quantities for calculations
+
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor]: mean and variance of the predicted function
+    """
+
+
+def exact_predictions(xtest: torch.Tensor, inputs: dict, var: bool) -> Union[torch.Tensor, torch.Tensor]:
+    """Calculates the exact prediction, that is, we are using a full GP.
+
+    Args:
+        xtest (torch.Tensor): the input test point
+        inputs (dict): a dictionary with all the relevant quantities for calculations
+        var (bool): if we want to return the variance as well
+
+    Returns:
+        Union[torch.Tensor, torch.Tensor]: mean OR mean and variance
+    """
+    xtrain = inputs['xtrain']
+    hyper = inputs['hyper']
+    kernel = inputs['kernel']
+    alpha = inputs['alpha']
+    ytrain = inputs['ytrain']
+
+    k_star = compute_kernel(xtest, xtrain, hyper)
+    mean = k_star @ alpha
+    if var:
+        k_ss = compute_kernel(xtest, xtest, hyper)
+        variance = k_ss - k_star @ solve(kernel, ytrain)
+        return mean, variance
+    return mean
+
+
 class BayesianMachine(PreWhiten, Normalisation):
 
     def __init__(self, xsamples: torch.Tensor, ysamples: torch.Tensor, sigma: float, **kwargs):
@@ -204,16 +258,20 @@ class BayesianMachine(PreWhiten, Normalisation):
             n_clusters = kwargs.pop('n_clusters')
             self.cluster_module, self.record = clustering(self.xtrain, self.ytrain, n_clusters)
 
-    def optimisation(self, parameters: torch.Tensor, niter: int = 10, lrate: float = 0.01, nrestart: int = 2) -> dict:
+    def optimisation(self, parameters: torch.Tensor, configurations: dict) -> dict:
         """Optimise for the kernel hyperparameters using Adam in PyTorch.
         Args:
             parameters(torch.tensor): a tensor of the kernel hyperparameters.
-            niter(int): the number of iterations we want to use
-            lr(float): the learning rate
-            nrestart(int): the number of times we want to restart the optimisation
+            configurations(dict): a dictionary with the following parameters:
+                - niter(int): the number of iterations we want to use
+                - lr(float): the learning rate
+                - nrestart(int): the number of times we want to restart the optimisation
         Returns:
             dict: dictionary consisting of the optimised values of the hyperparameters and the loss.
         """
+        niter = configurations['niter']
+        nrestart = configurations['nrestart']
+        lrate = configurations['lrate']
 
         dictionary = {}
         for i in range(nrestart):
@@ -238,4 +296,45 @@ class BayesianMachine(PreWhiten, Normalisation):
                     loss = cost(self.record, params, self.sigma)
                 record_loss.append(loss.item())
             dictionary[i] = {"parameters": params.data, "loss": record_loss}
+
+        # store relevant quantities
+        self.d_opt = dictionary[np.argmin([dictionary[i]["loss"][-1] for i in range(nrestart)])]
+        self.opt_parameters = self.d_opt["parameters"]
+        if self.exact:
+            self.kernel = compute_kernel(self.xtrain, self.xtrain, self.opt_parameters)
+            self.kernel = self.kernel + torch.eye(self.ndata) * self.sigma
+            self.alpha = solve(self.kernel, self.ytrain)
+        else:
+            self.kernels, self.alphas = kernel_alpha(self.record, self.opt_parameters, self.sigma)
+
         return dictionary
+
+    def mean_prediction(self, testpoint: torch.Tensor, var: bool, num_neighbour: int = None) -> torch.Tensor:
+        """Calculates the mean prediction of the GP
+
+        Args:
+            testpoint (torch.Tensor): the input test point
+            var (bool): will return the variance if True
+            num_neighbour (int): the number of nearest neighbour to use for the BCM prediction
+
+        Returns:
+            torch.Tensor: the predicted function
+        """
+        test_trans = PreWhiten.x_transformation(self, testpoint)
+
+        if self.exact:
+            inputs = {'kernel': self.kernel, 'alpha': self.alpha,
+                      'hyper': self.opt_parameters, 'xtrain': self.xtrain,
+                      'ytrain': self.ytrain}
+
+            if var:
+                mean, variance = exact_predictions(test_trans, inputs, True)
+                ypred = Normalisation.y_inv_transformation(self, mean)
+                yvar = self.ystd**2 * variance
+                return ypred.view(-1), yvar.view(-1)
+
+            else:
+                mean = exact_predictions(test_trans, inputs, False)
+                ypred = Normalisation.y_inv_transformation(self, mean)
+                return ypred.view(-1)
+        else:
