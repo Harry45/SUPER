@@ -187,8 +187,6 @@ class BayesianMachine(PreWhiten, Normalisation):
             nrestart(int): the number of times we want to restart the optimisation
         Returns:
             dict: dictionary consisting of the optimised values of the hyperparameters and the loss.
-
-        Multiprocessing: https://stackoverflow.com/questions/48822463/how-to-use-pytorch-multiprocessing
         """
 
         dictionary = {}
