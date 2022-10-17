@@ -88,7 +88,15 @@ def log_marginal_likelihood(kernel: torch.Tensor, targets: torch.Tensor, jitter:
     return log_ml.view(-1)
 
 
-def log_marginal_likelihood_parallel(args):
+def log_marginal_likelihood_parallel(args: list) -> list:
+    """Calculates the log marginal likelihood in parallel.
+
+    Args:
+        args (list): a list of list consisting of the kernel, targets and jitter term.
+
+    Returns:
+        list: a list of the marginal likelihood due to each partition.
+    """
     kernel = args[0]
     targets = args[1]
     jitter = args[2]
