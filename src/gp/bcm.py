@@ -27,17 +27,13 @@ def clustering(xsamples: torch.Tensor, ysamples: torch.Tensor, n_clusters: int) 
     Returns:
         dict: a dictionary to store the partitioned data
     """
-
     cluster_module = KMeans(n_clusters, random_state=0).fit(xsamples.data.numpy())
-
     record = {}
-
     for i in range(n_clusters):
         labels = cluster_module.labels_ == i
         xpoints = xsamples[labels]
         ypoints = ysamples[labels]
         record[str(i)] = (xpoints, ypoints)
-
     return cluster_module, record
 
 
@@ -53,7 +49,6 @@ def distance_from_cluster(module: KMeans, xtest: torch.Tensor) -> np.ndarray:
     Returns:
         np.ndarray: an array of sorted index of each cluster
     """
-
     xtest = xtest.view(1, -1)
     pdist = torch.nn.PairwiseDistance(p=2)
     record = list()
@@ -64,7 +59,6 @@ def distance_from_cluster(module: KMeans, xtest: torch.Tensor) -> np.ndarray:
         record.append(distance)
 
     sorted_index = np.argsort(record)
-
     return sorted_index
 
 
@@ -123,7 +117,6 @@ def cost(record: dict, hyperparameters: torch.Tensor, jitter: float) -> torch.Te
         kernel = compute_kernel(xpoint, xpoint, hyperparameters)
         log_ml = log_marginal_likelihood(kernel, ypoint, jitter)
         value = value + log_ml
-
     return value
 
 
@@ -140,7 +133,6 @@ def cost_exact(xpoint: torch.Tensor, ypoint: torch.Tensor,
     Returns:
         torch.Tensor: the log marginal likelihood
     """
-
     kernel = compute_kernel(xpoint, xpoint, hyperparameters)
     log_ml = log_marginal_likelihood(kernel, ypoint, jitter)
     return log_ml
@@ -190,9 +182,7 @@ class BayesianMachine(PreWhiten, Normalisation):
         """
 
         dictionary = {}
-
         for i in range(nrestart):
-
             params = parameters.clone() + torch.randn(parameters.shape) * 0.1
             params.requires_grad = True
             optimiser = torch.optim.Adam([params], lr=lrate)
@@ -201,11 +191,9 @@ class BayesianMachine(PreWhiten, Normalisation):
                 loss = cost_exact(self.xtrain, self.ytrain, params, self.sigma)
             else:
                 loss = cost(self.record, params, self.sigma)
-
             record_loss = [loss.item()]
 
             for _ in range(niter):
-
                 optimiser.zero_grad()
                 loss.backward()
                 optimiser.step()
@@ -214,9 +202,6 @@ class BayesianMachine(PreWhiten, Normalisation):
                     loss = cost_exact(self.xtrain, self.ytrain, params, self.sigma)
                 else:
                     loss = cost(self.record, params, self.sigma)
-
                 record_loss.append(loss.item())
-
             dictionary[i] = {"parameters": params.data, "loss": record_loss}
-
         return dictionary
