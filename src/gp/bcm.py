@@ -68,22 +68,32 @@ def distance_from_cluster(module: KMeans, xtest: torch.Tensor) -> np.ndarray:
     return sorted_index
 
 
-def log_marginal_likelihood(kernel: torch.Tensor, targets: torch.Tensor) -> torch.tensor:
+def log_marginal_likelihood(kernel: torch.Tensor, targets: torch.Tensor, jitter: float) -> torch.tensor:
     """Calculates the log marginal likelihood given a kernel and the targets (y values)
 
     Args:
         kernel (torch.Tensor): the kernel matrix of size m
         targets (torch.Tensor): the targets of size m
+        jitter (float): a jitter term for numerical stability
 
     Returns:
         torch.tensor: the value of the log-likelihood
     """
+    kernel = kernel + torch.eye(kernel.shape[0]) * jitter
     targets = targets.view(-1, 1)
     alpha = solve(kernel, targets)
     chi2 = targets.t() @ alpha
     logdet = logdeterminant(kernel)
     log_ml = -0.5 * (chi2 + logdet)
     return log_ml.view(-1)
+
+
+def log_marginal_likelihood_parallel(args):
+    kernel = args[0]
+    targets = args[1]
+    jitter = args[2]
+    log_ml = log_marginal_likelihood(kernel, targets, jitter)
+    return log_ml
 
 
 def cost(record: dict, hyperparameters: torch.Tensor, jitter: float) -> torch.Tensor:
@@ -103,8 +113,7 @@ def cost(record: dict, hyperparameters: torch.Tensor, jitter: float) -> torch.Te
     for i in range(nclusters):
         xpoint, ypoint = record[str(i)][0], record[str(i)][1]
         kernel = compute_kernel(xpoint, xpoint, hyperparameters)
-        kernel = kernel + torch.eye(xpoint.shape[0]) * jitter
-        log_ml = log_marginal_likelihood(kernel, ypoint)
+        log_ml = log_marginal_likelihood(kernel, ypoint, jitter)
         value = value + log_ml
 
     return value
@@ -125,9 +134,7 @@ def cost_exact(xpoint: torch.Tensor, ypoint: torch.Tensor,
     """
 
     kernel = compute_kernel(xpoint, xpoint, hyperparameters)
-    kernel = kernel + torch.eye(xpoint.shape[0]) * jitter
-    log_ml = log_marginal_likelihood(kernel, ypoint)
-
+    log_ml = log_marginal_likelihood(kernel, ypoint, jitter)
     return log_ml
 
 
