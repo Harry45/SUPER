@@ -102,7 +102,7 @@ def cost(record: dict, hyperparameters: torch.Tensor, jitter: float) -> torch.Te
         kernel = compute_kernel(xpoint, xpoint, hyperparameters)
         log_ml = log_marginal_likelihood(kernel, ypoint, jitter)
         value = value + log_ml
-    return value
+    return -1.0 * value
 
 
 def cost_exact(xpoint: torch.Tensor, ypoint: torch.Tensor,
@@ -120,7 +120,7 @@ def cost_exact(xpoint: torch.Tensor, ypoint: torch.Tensor,
     """
     kernel = compute_kernel(xpoint, xpoint, hyperparameters)
     log_ml = log_marginal_likelihood(kernel, ypoint, jitter)
-    return log_ml
+    return -1.0 * log_ml
 
 
 def kernel_alpha(record: dict, parameters: torch.Tensor, jitter: float) -> Tuple[dict, dict]:
@@ -145,7 +145,6 @@ def kernel_alpha(record: dict, parameters: torch.Tensor, jitter: float) -> Tuple
         alpha = solve(kernel, ypoint)
         kernels[str(i)] = kernel
         alphas[str(i)] = alpha
-
     return kernels, alphas
 
 
@@ -188,16 +187,53 @@ def bcm_predictions(means: torch.Tensor, variances: torch.Tensor, prior_variance
     return predictions
 
 
-def approximate_predictions(xtest: torch.Tensor, inputs: dict) -> Tuple[torch.Tensor, torch.Tensor]:
+def approximate_predictions(xtest: torch.Tensor, inputs: dict, nneighbour: int) -> dict:
     """Calculates the approximate predictions using the experts - either PoE or BCM
 
     Args:
         xtest (torch.Tensor): the input test point
-        inputs (dict): a dictionary with all the relevant quantities for calculations
+        inputs (dict): a dictionary with all the relevant quantities for
+        calculations
+        var (bool): if we want to return the variance
+        nneighbour (int): the number of nearest neighbour to use
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor]: mean and variance of the predicted function
+        dict: means, variances
     """
+
+    record = inputs['record']
+    hyper = inputs['hyper']
+    kernels = inputs['kernels']
+    alphas = inputs['alphas']
+    kmean = inputs['kmean']
+
+    assert nneighbour <= len(record), 'Number of neighbours greater than number of clusters.'
+
+    # sorted cluster centre from test point
+    sorted_index = distance_from_cluster(kmean, xtest)[0:nneighbour]
+
+    record_means = list()
+    record_variance = list()
+    k_ss = compute_kernel(xtest, xtest, hyper)
+    for index in sorted_index:
+        # the training points corresponding to that cluster
+        xtrain, ytrain = record[str(index)]
+        alpha = alphas[str(index)]
+        kernel = kernels[str(index)]
+
+        # then calculate mean and variance
+        k_star = compute_kernel(xtest, xtrain, hyper)
+        mean = k_star @ alpha
+        variance = k_ss - k_star @ solve(kernel, ytrain)
+        record_means.append(mean.view(-1))
+        record_variance.append(variance.view(-1))
+
+    # record the important quantities
+    outputs = {}
+    outputs['means'] = torch.FloatTensor(record_means)
+    outputs['variances'] = torch.FloatTensor(record_variance)
+    outputs['prior_var'] = k_ss.view(-1)
+    return outputs
 
 
 def exact_predictions(xtest: torch.Tensor, inputs: dict, var: bool) -> Union[torch.Tensor, torch.Tensor]:
@@ -241,11 +277,11 @@ class BayesianMachine(PreWhiten, Normalisation):
         self.sigma = sigma
 
         # apply transformation
-        PreWhiten.__init__(self, xsamples)
         Normalisation.__init__(self, ysamples)
 
         # apply transformation to inputs if the dimensionality is greater than 2
         if self.ndim >= 2:
+            PreWhiten.__init__(self, xsamples)
             self.xtrain = PreWhiten.x_transformation(self, self.xsamples)
         else:
             self.xtrain = self.xsamples
@@ -257,6 +293,12 @@ class BayesianMachine(PreWhiten, Normalisation):
             self.exact = False
             n_clusters = kwargs.pop('n_clusters')
             self.cluster_module, self.record = clustering(self.xtrain, self.ytrain, n_clusters)
+
+        # to record other important quantities
+        self.d_opt: dict = None
+        self.opt_parameters: torch.Tensor = None
+        self.kernel: torch.Tensor = None
+        self.alpha: torch.Tensor = None
 
     def optimisation(self, parameters: torch.Tensor, configurations: dict) -> dict:
         """Optimise for the kernel hyperparameters using Adam in PyTorch.
@@ -305,22 +347,31 @@ class BayesianMachine(PreWhiten, Normalisation):
             self.kernel = self.kernel + torch.eye(self.ndata) * self.sigma
             self.alpha = solve(self.kernel, self.ytrain)
         else:
-            self.kernels, self.alphas = kernel_alpha(self.record, self.opt_parameters, self.sigma)
+            self.kernel, self.alpha = kernel_alpha(self.record, self.opt_parameters, self.sigma)
 
         return dictionary
 
-    def mean_prediction(self, testpoint: torch.Tensor, var: bool, num_neighbour: int = None) -> torch.Tensor:
+    def prediction(self, testpoint: torch.Tensor, var: bool,
+                   num_neighbour: int = None, method: str = None) -> torch.Tensor:
         """Calculates the mean prediction of the GP
 
         Args:
             testpoint (torch.Tensor): the input test point
             var (bool): will return the variance if True
-            num_neighbour (int): the number of nearest neighbour to use for the BCM prediction
+            num_neighbour (int): the number of nearest neighbour to use for the
+            BCM prediction
+            method (str): either Product of Expert (PoE) or Bayesian Committee
+            Machine (BCM)
 
         Returns:
             torch.Tensor: the predicted function
         """
-        test_trans = PreWhiten.x_transformation(self, testpoint)
+
+        if self.ndim >= 2:
+            test_trans = PreWhiten.x_transformation(self, testpoint)
+
+        else:
+            test_trans = testpoint
 
         if self.exact:
             inputs = {'kernel': self.kernel, 'alpha': self.alpha,
@@ -331,10 +382,30 @@ class BayesianMachine(PreWhiten, Normalisation):
                 mean, variance = exact_predictions(test_trans, inputs, True)
                 ypred = Normalisation.y_inv_transformation(self, mean)
                 yvar = self.ystd**2 * variance
-                return ypred.view(-1), yvar.view(-1)
 
-            else:
-                mean = exact_predictions(test_trans, inputs, False)
-                ypred = Normalisation.y_inv_transformation(self, mean)
-                return ypred.view(-1)
+            mean = exact_predictions(test_trans, inputs, False)
+            ypred = Normalisation.y_inv_transformation(self, mean)
+
         else:
+            method = method.lower()
+            assert method in ['poe', 'bcm'], 'Only PoE and BCM supported.'
+
+            inputs = {'kernels': self.kernel, 'hyper': self.opt_parameters,
+                      'record': self.record, 'alphas': self.alpha, 'kmean': self.cluster_module}
+
+            # calculate the predictions (mean and variance) from each expert
+            predictions = approximate_predictions(test_trans, inputs, num_neighbour)
+
+            if method == 'poe':
+
+                poe = poe_predictions(predictions['means'], predictions['variances'])
+                ypred = Normalisation.y_inv_transformation(self, poe['mean'])
+                yvar = self.ystd**2 * poe['variance']
+
+            bcm = bcm_predictions(predictions['means'], predictions['variances'], predictions['prior_var'])
+            ypred = Normalisation.y_inv_transformation(self, bcm['mean'])
+            yvar = self.ystd**2 * bcm['variance']
+
+        if var:
+            return ypred, yvar
+        return ypred
