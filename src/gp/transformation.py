@@ -89,5 +89,4 @@ class PreWhiten:
 
         # calculate the transformed training points
         transformed = torch.linalg.inv(self.chol_train) @ (point - self.mean_train).t()
-
         return transformed.t()
