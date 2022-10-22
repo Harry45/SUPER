@@ -28,7 +28,6 @@ def pairwise_distance(arr1: torch.tensor, arr2: torch.tensor) -> torch.tensor:
     sqr_a = torch.sum(torch.pow(arr1, 2), 1, keepdim=True).expand(arr1.shape[0], arr2.shape[0])
     sqr_b = torch.sum(torch.pow(arr2, 2), 1, keepdim=True).expand(arr2.shape[0], arr1.shape[0]).t()
     dist = sqr_a - 2 * torch.mm(arr1, arr2.t()) + sqr_b
-
     return dist
 
 
@@ -61,7 +60,6 @@ def compute_kernel(arr1: torch.tensor, arr2: torch.tensor, hyper: torch.tensor) 
 
     # compute the kernel
     kernel = torch.exp(hyper[:, 0]) * torch.exp(-0.5 * dist)
-
     return kernel
 
 
@@ -77,7 +75,6 @@ def solve(kernel: torch.tensor, vector: torch.tensor) -> torch.tensor:
     """
 
     solution = torch.linalg.solve(kernel, vector)
-
     return solution
 
 
@@ -92,7 +89,6 @@ def logdeterminant(kernel: torch.tensor) -> torch.tensor:
     """
 
     logdet = torch.logdet(kernel)
-
     return logdet
 
 
@@ -107,5 +103,4 @@ def slogdeterminant(kernel: torch.tensor) -> torch.tensor:
     """
 
     sign, logdet = torch.slogdet(kernel)
-
     return sign, logdet

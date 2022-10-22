@@ -3,17 +3,17 @@ Project: Scalable Gaussian Process Emulator (SUPER) for modelling power spectra
 Author: Dr. Arrykrishna Mootoovaloo
 Date: September 2022
 Email: arrykrish@gmail.com
-Description: Functions related to the Gaussian Process
+Description: Bayesian Committee Machine for Scalable Gaussian Process Emulator
 """
 
-import torch
 from typing import Tuple, Union
+import torch
 import numpy as np
 from sklearn.cluster import KMeans
 
 # our script and functions
-from src.gp.kernel import solve, logdeterminant, compute_kernel
-from src.gp.transformation import PreWhiten, Normalisation
+from .kernel import solve, logdeterminant, compute_kernel
+from .transformation import PreWhiten, Normalisation
 
 
 def clustering(xsamples: torch.Tensor, ysamples: torch.Tensor, n_clusters: int) -> dict:
@@ -79,7 +79,8 @@ def log_marginal_likelihood(kernel: torch.Tensor, targets: torch.Tensor, jitter:
     alpha = solve(kernel, targets)
     chi2 = targets.t() @ alpha
     logdet = logdeterminant(kernel)
-    log_ml = -0.5 * (chi2 + logdet)
+    noise = kernel.shape[0] * torch.log(torch.tensor(2.0 * torch.pi * jitter))
+    log_ml = -0.5 * (chi2 + logdet + noise)
     return log_ml.view(-1)
 
 
@@ -217,14 +218,14 @@ def approximate_predictions(xtest: torch.Tensor, inputs: dict, nneighbour: int) 
     k_ss = compute_kernel(xtest, xtest, hyper)
     for index in sorted_index:
         # the training points corresponding to that cluster
-        xtrain, ytrain = record[str(index)]
+        xtrain, _ = record[str(index)]
         alpha = alphas[str(index)]
         kernel = kernels[str(index)]
 
         # then calculate mean and variance
         k_star = compute_kernel(xtest, xtrain, hyper)
         mean = k_star @ alpha
-        variance = k_ss - k_star @ solve(kernel, ytrain)
+        variance = k_ss - k_star @ solve(kernel, k_star.t())
         record_means.append(mean.view(-1))
         record_variance.append(variance.view(-1))
 
@@ -234,6 +235,34 @@ def approximate_predictions(xtest: torch.Tensor, inputs: dict, nneighbour: int) 
     outputs['variances'] = torch.FloatTensor(record_variance)
     outputs['prior_var'] = k_ss.view(-1)
     return outputs
+
+
+def mean_pred_single_unit(xtest: torch.Tensor, inputs: dict) -> torch.Tensor:
+    """Predicts the mean using a single expert using either the PoE or BCM. The
+    idea is to find the closest cluster and assign the test point to it.
+
+    Args:
+        xtest (torch.Tensor): the test point
+        inputs (dict): the relevant quantities to be used in the prediction
+
+    Returns:
+        torch.Tensor: the mean prediction
+    """
+    record = inputs['record']
+    hyper = inputs['hyper']
+    alphas = inputs['alphas']
+    kmean = inputs['kmean']
+
+    # take the first cluster
+    index = distance_from_cluster(kmean, xtest)[0]
+    xtrain, _ = record[str(index)]
+    alpha = alphas[str(index)]
+
+    # then calculate mean
+    k_star = compute_kernel(xtest, xtrain, hyper)
+    mean = k_star @ alpha
+
+    return mean.view(-1)
 
 
 def exact_predictions(xtest: torch.Tensor, inputs: dict, var: bool) -> Union[torch.Tensor, torch.Tensor]:
@@ -251,18 +280,32 @@ def exact_predictions(xtest: torch.Tensor, inputs: dict, var: bool) -> Union[tor
     hyper = inputs['hyper']
     kernel = inputs['kernel']
     alpha = inputs['alpha']
-    ytrain = inputs['ytrain']
 
     k_star = compute_kernel(xtest, xtrain, hyper)
     mean = k_star @ alpha
     if var:
         k_ss = compute_kernel(xtest, xtest, hyper)
-        variance = k_ss - k_star @ solve(kernel, ytrain)
-        return mean, variance
-    return mean
+        variance = k_ss - k_star @ solve(kernel, k_star.t())
+        return mean.view(-1), variance.view(-1)
+    return mean.view(-1)
 
 
 class BayesianMachine(PreWhiten, Normalisation):
+    """A pipeline which allows to do exact GP and approximate GP using
+    partitioning of the training points via a KMeans clustering. The method
+    implemented is Product-of-Expert (PoE) and Bayesian Committee Machine
+    (BCM). We can use a single unit to make prediction. The idea is to
+    assign the test point to the closest cluster and use that specific unit
+    to make prediction. An important ingredient is to also predict the
+    gradient of the function at the test point.
+
+    Args:
+        xsamples (torch.Tensor): the input training points of shape N x d,
+        where N >> d.
+        ysamples (torch.Tensor): the targets of shape N x 1
+        sigma (float): the noise term, a small value (~1E-5) for numerical
+        stability.
+    """
 
     def __init__(self, xsamples: torch.Tensor, ysamples: torch.Tensor, sigma: float, **kwargs):
 
@@ -409,3 +452,57 @@ class BayesianMachine(PreWhiten, Normalisation):
         if var:
             return ypred, yvar
         return ypred
+
+    def single_unit_mean(self, testpoint: torch.Tensor) -> torch.Tensor:
+        """Calculates the mean using a single unit.
+
+        Args:
+            testpoint (torch.Tensor): the test point
+
+        Returns:
+            torch.Tensor: the mean prediction
+        """
+        if self.ndim >= 2:
+            test_trans = PreWhiten.x_transformation(self, testpoint)
+
+        else:
+            test_trans = testpoint
+
+        inputs = {'kernels': self.kernel, 'hyper': self.opt_parameters,
+                  'record': self.record, 'alphas': self.alpha, 'kmean': self.cluster_module}
+        mean = mean_pred_single_unit(test_trans, inputs)
+        ypred = Normalisation.y_inv_transformation(self, mean)
+        return ypred
+
+    def first_derivative(self, testpoint: torch.Tensor) -> torch.Tensor:
+        """Calculates the first derivative of the predicted function with the GP
+        with respect to the input test point.
+
+        Args:
+            testpoint (torch.Tensor): the input test point.
+
+        Returns:
+            torch.Tensor: the gradient of the function.
+        """
+
+        testpoint.requires_grad = True
+
+        if self.ndim >= 2:
+            test_trans = PreWhiten.x_transformation(self, testpoint)
+        else:
+            test_trans = testpoint
+
+        if self.exact:
+            inputs = {'kernel': self.kernel, 'alpha': self.alpha,
+                      'hyper': self.opt_parameters, 'xtrain': self.xtrain,
+                      'ytrain': self.ytrain}
+            mean = exact_predictions(test_trans, inputs, False)
+        else:
+            inputs = {'kernels': self.kernel, 'hyper': self.opt_parameters,
+                      'record': self.record, 'alphas': self.alpha, 'kmean': self.cluster_module}
+            mean = mean_pred_single_unit(test_trans, inputs)
+
+        ypred = Normalisation.y_inv_transformation(self, mean)
+        gradient = torch.autograd.grad(ypred, testpoint)
+        testpoint.requires_grad = False
+        return gradient[0].view(-1)
