@@ -1,11 +1,11 @@
 """
-Project: Scalable Gaussian Process Emulator (SUPER) for modelling power spectra
-Author: Dr. Arrykrishna Mootoovaloo
-Date: November 2022
+Authors: Arrykrishna Mootoovaloo
 Email: arrykrish@gmail.com
-Description: The main configuration file
+Date: November 2022
+Project: Implementation of a scalable GP approach for emulating power spectra
+Script: The main configuration file
 """
-
+import os
 from ml_collections.config_dict import ConfigDict
 
 BF_PARAMS = {'AGN': {'A2': -0.11900, 'B2': 0.1300, 'C2': 0.6000, 'D2': 0.002110, 'E2': -2.0600,
@@ -28,21 +28,33 @@ def get_config() -> ConfigDict:
 
     config = ConfigDict()
 
-    # parameters
-    config.parameters = parameters = ConfigDict()
-    parameters.keys = ['omega_cdm', 'omega_b', 'ln10^{10}A_s', 'n_s', 'h']
-    parameters.distribution = 'uniform'
-    parameters.loc = [0.06, 0.019, 1.70, 0.70, 0.64]
-    parameters.scale = [0.34, 0.007, 3.30, 0.60, 0.18]
-    parameters.reference = [0.12, 0.020, 3.0, 1.0, 0.70]
-
     # boolean settings
     config.boolean = boolean = ConfigDict()
     boolean.neutrino = False
     boolean.baryonfeedback = False
+    boolean.linearpk = False
+
+    # paths
+    config.path = path = ConfigDict()
+    path.data = 'data/'
+    path.gps = 'gps/'
+    if boolean.linearpk:
+        path.gps = os.path.join(path.gps, 'linear')
+    else:
+        path.gps = os.path.join(path.gps, 'nonlinear')
+    path.plots = 'plots/'
+
+    # parameters
+    config.parameters = parameters = ConfigDict()
+    parameters.names = ['omega_cdm', 'omega_b', 'ln10^{10}A_s', 'n_s', 'h']
+    parameters.distribution = 'uniform'
+    parameters.loc = [0.06, 0.019, 1.70, 0.70, 0.64]
+    parameters.scale = [0.34, 0.007, 3.30, 0.60, 0.18]
+    parameters.reference = [0.12, 0.020, 3.0, 1.0, 0.70]
+    parameters.nparams = len(parameters.names)
 
     # settings for analytical baryon feedback model
-    config.bf = bar_fed = ConfigDict()
+    config.bar_fed = bar_fed = ConfigDict()
     bar_fed.model = 'AGN'
     bar_fed.params = BF_PARAMS[config.bar_fed.model]
 
@@ -64,7 +76,7 @@ def get_config() -> ConfigDict:
     neutrino.deg_ncdm = 3.0
     neutrino.T_ncdm = 0.71611
     neutrino.N_ur = 0.00641
-    neutrino.fixed_m = 0.06
+    neutrino.fixed_nm = 0.06
 
     # emulator settings
     config.emulator = emulator = ConfigDict()
@@ -75,8 +87,8 @@ def get_config() -> ConfigDict:
     emulator.zmax = 5.0
     emulator.kmin = 5E-4
     emulator.kmax = 50
-    emulator.gridz = 20
-    emulator.gridk = 40
+    emulator.grid_nz = 20
+    emulator.grid_nk = 40
 
     # spline interpolator settings
     config.interp = interp = ConfigDict()

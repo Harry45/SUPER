@@ -61,8 +61,7 @@ def store_arrays(array: np.ndarray, folder_name: str, file_name: str) -> None:
     """
 
     # create the folder if it does not exist
-    if not os.path.exists(folder_name):
-        os.makedirs(folder_name)
+    os.makedirs(folder_name, exist_ok=True)
 
     # use compressed format to store data
     np.savez_compressed(folder_name + "/" + file_name + ".npz", array)
@@ -95,9 +94,9 @@ def load_csv(folder_name: str, file_name: str) -> pd.DataFrame:
         pd.DataFrame: the loaded csv file
     """
     # load the csv file
-    df = pd.read_csv(folder_name + "/" + file_name + ".csv", header=None)
+    dataframe = pd.read_csv(folder_name + "/" + file_name + ".csv", header=None)
 
-    return df
+    return dataframe
 
 
 def save_csv(array: np.ndarray, folder_name: str, file_name: str) -> None:
@@ -109,13 +108,11 @@ def save_csv(array: np.ndarray, folder_name: str, file_name: str) -> None:
         file_name (str): The name of the file
     """
     # create the folder if it does not exist
-    if not os.path.exists(folder_name):
-        os.makedirs(folder_name)
-
+    os.makedirs(folder_name, exist_ok=True)
     np.savetxt(folder_name + "/" + file_name + ".csv", array, delimiter=",")
 
 
-def save_pd_csv(df: pd.DataFrame, folder_name: str, file_name: str) -> None:
+def save_pd_csv(dataframe: pd.DataFrame, folder_name: str, file_name: str) -> None:
     """Save an array to a csv file
 
     Args:
@@ -124,13 +121,11 @@ def save_pd_csv(df: pd.DataFrame, folder_name: str, file_name: str) -> None:
         file_name (str): The name of the file
     """
     # create the folder if it does not exist
-    if not os.path.exists(folder_name):
-        os.makedirs(folder_name)
-
-    df.to_csv(folder_name + "/" + file_name + ".csv", index=False)
+    os.makedirs(folder_name, exist_ok=True)
+    dataframe.to_csv(folder_name + "/" + file_name + ".csv", index=False)
 
 
-def save_list(list_to_store: list, folder_name: str, file_name: str) -> None:
+def save_pickle(list_to_store: list, folder_name: str, file_name: str) -> None:
     """Stores a list in a folder.
 
     Args:
@@ -140,15 +135,14 @@ def save_list(list_to_store: list, folder_name: str, file_name: str) -> None:
     """
 
     # create the folder if it does not exist
-    if not os.path.exists(folder_name):
-        os.makedirs(folder_name)
+    os.makedirs(folder_name, exist_ok=True)
 
     # use compressed format to store data
     with open(folder_name + "/" + file_name + ".pkl", "wb") as f:
         pickle.dump(list_to_store, f)
 
 
-def load_list(folder_name: str, file_name: str) -> list:
+def load_pickle(folder_name: str, file_name: str) -> list:
     """Reads a list from a folder.
 
     Args:
@@ -177,7 +171,7 @@ def emcee_chains(folder_name: str, file_name: str, save=True) -> np.ndarray:
     """
 
     # the pkl file
-    pkl_file = load_list(folder_name, file_name)
+    pkl_file = load_pickle(folder_name, file_name)
 
     # the MCMC samples
     array = pkl_file.flatchain

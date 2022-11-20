@@ -44,7 +44,7 @@ def neutrino_args(config: ConfigDict, **kwargs) -> dict:
     dictionary['T_ncdm'] = config.neutrino.T_ncdm
     dictionary['N_ur'] = config.neutrino.N_ur
 
-    if 'M_tot' in kwargs and 'M_tot' in config.parameters.keys:
+    if 'M_tot' in kwargs and 'M_tot' in config.parameters.names:
         mass = kwargs.pop('M_tot')
     else:
         mass = config.neutrino.fixed_nm
@@ -52,19 +52,20 @@ def neutrino_args(config: ConfigDict, **kwargs) -> dict:
     return dictionary
 
 
-def params_args(config: ConfigDict, values: list) -> dict:
+def params_args(config: ConfigDict, values: dict) -> dict:
     """Generates a dictionary of parameters, which will be used as input to Classy
 
     Args:
         config (ConfigDict): the main configuration file
-        values (list): the values of the parameters
+        values (dict): the values of the parameters
 
     Returns:
         dict: a dictionary, with the approximate keys and values
     """
-    assert len(values) == len(config.parameters.keys), 'Mis-match in shape'
+    assert len(values) == len(config.parameters.names), 'Mis-match in shape'
 
     dictionary = dict()
-    for i, key in enumerate(config.parameters.keys):
-        dictionary[key] = values[i]
+    for name in config.parameters.names:
+        if name not in ['M_tot']:
+            dictionary[name] = values[name]
     return dictionary
