@@ -46,10 +46,10 @@ def class_compute(config: ConfigDict, cosmology: dict) -> Class:
     return class_module
 
 
-def delete_module(class_module):
+def delete_module(class_module: Class):
     """Deletes the module to prevent memory overflow.
     Args:
-        module: A CLASS module
+        module (Class): A CLASS module
     """
     class_module.struct_cleanup()
 
