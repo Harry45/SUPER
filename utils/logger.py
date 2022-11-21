@@ -8,7 +8,6 @@ Script: The logging file to store all the logs.
 
 import logging
 import sys
-from logging.handlers import TimedRotatingFileHandler
 from datetime import datetime
 from ml_collections.config_dict import ConfigDict
 
