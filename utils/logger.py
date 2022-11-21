@@ -13,7 +13,6 @@ from datetime import datetime
 from ml_collections.config_dict import ConfigDict
 
 NOW = datetime.now()
-# FORMATTER = logging.Formatter("%(asctime)s — %(name)s — %(levelname)s — %(message)s")
 FORMATTER = logging.Formatter("[%(levelname)s] - %(asctime)s - %(name)s - : %(message)s in %(pathname)s:%(lineno)d")
 CONSOLE_FORMATTER = logging.Formatter("[%(levelname)s]: %(message)s")
 DATETIME = NOW.strftime("%d-%m-%Y-%H-%M")
