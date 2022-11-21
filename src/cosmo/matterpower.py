@@ -38,7 +38,7 @@ def class_compute(config: ConfigDict, cosmology: dict) -> Class:
     arg_params = params_args(config, cosmology)
 
     logger = get_logger(config, 'class')
-    logger.info('Running Class')
+    logger.info(f'Running Class at {cosmology}')
 
     # Run Class
     class_module = Class()
