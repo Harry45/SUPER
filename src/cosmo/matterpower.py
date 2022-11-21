@@ -6,11 +6,7 @@ Project: Implementation of a scalable GP approach for emulating power spectra
 Script: Script for generating the linear and non-linear matter power spectrum.
 """
 
-import logging
-from typing import Tuple
-from dataclasses import dataclass, field
 from ml_collections.config_dict import ConfigDict
-import numpy as np
 from classy import Class  # pylint: disable-msg=E0611
 
 # our scripts and functions
@@ -38,7 +34,7 @@ def class_compute(config: ConfigDict, cosmology: dict) -> Class:
     arg_params = params_args(config, cosmology)
 
     logger = get_logger(config, 'class')
-    logger.info(f'Running Class at {cosmology}')
+    logger.info('Running Class at %s', cosmology)
 
     # Run Class
     class_module = Class()
