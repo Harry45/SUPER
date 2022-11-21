@@ -27,12 +27,13 @@ def get_config() -> ConfigDict:
     """
 
     config = ConfigDict()
+    config.logname = 'Scalable-GP'
 
     # boolean settings
     config.boolean = boolean = ConfigDict()
     boolean.neutrino = False
     boolean.baryonfeedback = False
-    boolean.linearpk = False
+    boolean.linearpk = True
 
     # paths
     config.path = path = ConfigDict()
@@ -43,6 +44,7 @@ def get_config() -> ConfigDict:
     else:
         path.gps = os.path.join(path.gps, 'nonlinear')
     path.plots = 'plots/'
+    path.logs = 'logs/'
 
     # parameters
     config.parameters = parameters = ConfigDict()

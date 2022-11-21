@@ -6,6 +6,7 @@ Project: Implementation of a scalable GP approach for emulating power spectra
 Script: Script for generating the linear and non-linear matter power spectrum.
 """
 
+import logging
 from typing import Tuple
 from dataclasses import dataclass, field
 from ml_collections.config_dict import ConfigDict
@@ -13,6 +14,7 @@ import numpy as np
 from classy import Class  # pylint: disable-msg=E0611
 
 # our scripts and functions
+from utils.logger import get_logger
 from .argsgen import class_args, neutrino_args, params_args
 
 
@@ -35,9 +37,8 @@ def class_compute(config: ConfigDict, cosmology: dict) -> Class:
 
     arg_params = params_args(config, cosmology)
 
-    print(arg_class)
-    print(arg_neutrino)
-    print(arg_params)
+    logger = get_logger(config, 'class')
+    logger.info('Running Class')
 
     # Run Class
     class_module = Class()

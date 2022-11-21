@@ -29,3 +29,4 @@ def make_paths(config: ConfigDict) -> None:
     os.makedirs(config.path.data, exist_ok=True)
     os.makedirs(config.path.gps, exist_ok=True)
     os.makedirs(config.path.plots, exist_ok=True)
+    os.makedirs(config.path.logs, exist_ok=True)
