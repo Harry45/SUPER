@@ -1,7 +1,10 @@
-# Author: Arrykrishna Mootoovaloo
-# Date: January 2022
-# Email: arrykrish@gmail.com/a.mootoovaloo17@imperial.ac.uk/arrykrishna.mootoovaloo@physics.ox.ac.uk
-# Description: This file contains some helper functions.
+
+"""
+Author: Arrykrishna Mootoovaloo
+Date: January 2022
+Email: arrykrish@gmail.com/a.mootoovaloo17@imperial.ac.uk/arrykrishna.mootoovaloo@physics.ox.ac.uk
+Description: This file contains some helper functions.
+"""
 
 import os
 import pickle
