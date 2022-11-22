@@ -29,7 +29,6 @@ def main(argv):
 
     logger = get_logger(FLAGS.config, 'main')
     logger.info("Running main script")
-    logger.debug('Testing debug')
 
     # cosmologies = scale_lhs(FLAGS.config, 'lhs_1000', True, fname='1000')
     cosmo = {'omega_cdm': 0.12, 'omega_b': 0.022, 'ln10^{10}A_s': 3.3, 'n_s': 1.0, 'h': 0.70}
