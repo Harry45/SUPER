@@ -21,6 +21,7 @@ def class_args(config: ConfigDict) -> dict:
     """
     dictionary = dict()
     dictionary['output'] = config.classy.output
+    dictionary['non_linear'] = config.classy.mode
     dictionary['P_k_max_1/Mpc'] = config.classy.k_max_pk
     dictionary['z_max_pk'] = config.classy.z_max_pk
     dictionary['sBBN file'] = config.classy.bbn
@@ -68,4 +69,8 @@ def params_args(config: ConfigDict, values: dict) -> dict:
     for name in config.parameters.names:
         if name not in ['M_tot']:
             dictionary[name] = values[name]
+
+    if 'c_min' not in config.parameters.names:
+        dictionary['c_min'] = config.classy.cmin
+
     return dictionary

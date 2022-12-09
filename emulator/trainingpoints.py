@@ -9,9 +9,14 @@ import os
 from ml_collections.config_dict import ConfigDict
 import scipy.stats
 import pandas as pd
+import logging
 
 # our scripts and functions
-from utils.helpers import save_csv, save_pickle  # pylint: disable=import-error
+from utils.helpers import save_csv, save_pickle, load_pickle  # pylint: disable=import-error
+from utils.logger import get_logger
+from src.cosmo.matterpower import calculate_pk
+
+logger = logging.getLogger(__name__)
 
 
 def generate_prior(config: ConfigDict) -> dict:
@@ -41,6 +46,7 @@ def scale_lhs(config: ConfigDict, lhs_file: str, save: bool = False, **kwargs) -
     Returns:
         list: A list of dictionaries containing the scaled LHS samples (cosmological parameters).
     """
+    logger.info("Scaling the LHS samples to the prior range.")
 
     # read the LHS samples
     lhs = pd.read_csv(os.path.join("data", lhs_file + ".csv"), index_col=[0])
@@ -48,8 +54,8 @@ def scale_lhs(config: ConfigDict, lhs_file: str, save: bool = False, **kwargs) -
     cosmo_list = list()
 
     for i in range(lhs.shape[0]):
-        # get the cosmological parameters
-        lhs_row = lhs.iloc[i, :].values
+
+        lhs_row = lhs.iloc[i, :].values  # pylint: disable=maybe-no-member
         cosmo = dict()
 
         for k in range(config.parameters.nparams):
@@ -68,44 +74,23 @@ def scale_lhs(config: ConfigDict, lhs_file: str, save: bool = False, **kwargs) -
     return cosmo_list
 
 
-# def calculate_power_spectrum(fname: str, redshift: float = 0.0) -> Tuple[list, list, list]:
-#     """Generates the linear matter power spectrum.
+def generate_training_pk(config: ConfigDict, fname: str) -> dict:
+    """Generates the training set for the power spectra
 
-#     Args:
-#         fname (str): The name of the file.
-#         redshift (float): The redshift. Defaults to 0.0.
+    Args:
+        config (ConfigDict): the main configuration file.
+        fname (str): name of the file.
 
-#     Returns:
-#         Tuple[list, list, list]: A list of the cosmological parameters and
-#         correponding list of the linear and nonlinear matter power spectrum.
-#     """
+    Returns:
+        dict: a dictionary with calculated power spectra (2D surface)
+    """
+    logger.info("Generating the training set for the power spectra.")
 
-#     # scale the LHS points to the cosmological parameters
-#     cosmo_params = scale_lhs(fname, save=True)
-
-#     # class to compute the linear matter power spectrum
-#     module = PowerSpectrum(CONFIG.ZMIN, CONFIG.ZMAX, CONFIG.KMIN, CONFIG.KMAX)
-
-#     pk_lin = list()
-#     pk_non = list()
-
-#     for cosmo in cosmo_params:
-
-#         pk_linear, pk_nonlinear = module.pk_calculation(cosmo, redshift)
-
-#         # record the linear and non-linear matter power spectrum
-#         pk_lin.append(pk_linear)
-#         pk_non.append(pk_nonlinear)
-
-#     pk_lin_df = pd.DataFrame(pk_lin)
-#     pk_non_df = pd.DataFrame(pk_non)
-
-#     # save the linear matter power spectrum
-#     hp.save_csv(pk_lin_df, "data", "pk_linear_" + fname)
-#     hp.save_list(pk_lin, "data", "pk_linear_" + fname)
-
-#     # save the non linear matter power spectrum
-#     hp.save_csv(pk_non_df, "data", "pk_nonlinear_" + fname)
-#     hp.save_list(pk_non, "data", "pk_nonlinear_" + fname)
-
-#     return cosmo_params, pk_lin, pk_non
+    cosmologies = load_pickle('data', 'cosmologies_' + fname)
+    ncosmo = len(cosmologies)
+    record_pk = dict()
+    for i in range(ncosmo):
+        record_pk[i] = calculate_pk(config, cosmologies[i])
+    file_name = 'pk_' + 'lin' if config.boolean.linearpk else 'nonlin'
+    save_pickle(record_pk, 'data', file_name + f'_{ncosmo}')
+    return record_pk

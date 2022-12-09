@@ -5,7 +5,6 @@ Date: November 2022
 Project: Implementation of a scalable GP approach for emulating power spectra
 Script: The main configuration file
 """
-import os
 from ml_collections.config_dict import ConfigDict
 
 BF_PARAMS = {'AGN': {'A2': -0.11900, 'B2': 0.1300, 'C2': 0.6000, 'D2': 0.002110, 'E2': -2.0600,
@@ -33,26 +32,24 @@ def get_config() -> ConfigDict:
     config.boolean = boolean = ConfigDict()
     boolean.neutrino = False
     boolean.baryonfeedback = False
+    boolean.fixedbf = False
+    boolean.bf_analytic = False
     boolean.linearpk = True
 
     # paths
     config.path = path = ConfigDict()
     path.data = 'data/'
-    path.gps = 'gps/'
-    if boolean.linearpk:
-        path.gps = os.path.join(path.gps, 'linear')
-    else:
-        path.gps = os.path.join(path.gps, 'nonlinear')
+    path.gps = 'gps/' + 'linear/' if boolean.linearpk else 'nonlinear/'
     path.plots = 'plots/'
     path.logs = 'logs/'
 
     # parameters
     config.parameters = parameters = ConfigDict()
-    parameters.names = ['omega_cdm', 'omega_b', 'ln10^{10}A_s', 'n_s', 'h']
+    parameters.names = ['omega_cdm', 'omega_b', 'S_8', 'n_s', 'h']
     parameters.distribution = 'uniform'
-    parameters.loc = [0.06, 0.019, 1.70, 0.70, 0.64]
-    parameters.scale = [0.34, 0.007, 3.30, 0.60, 0.18]
-    parameters.reference = [0.12, 0.020, 3.0, 1.0, 0.70]
+    parameters.loc = [0.051, 0.019, 0.10, 0.84, 0.64]
+    parameters.scale = [0.204, 0.007, 1.20, 0.26, 0.18]
+    parameters.fiducial = [0.12, 0.020, 0.76, 1.0, 0.70]
     parameters.nparams = len(parameters.names)
 
     # settings for analytical baryon feedback model
@@ -66,11 +63,13 @@ def get_config() -> ConfigDict:
     classy.halofit_sigma_precision = 0.05
     classy.output = "mPk"
     classy.mode = 'hmcode'
-    classy.bbn = '/home/harry/Desktop/class/bbn/sBBN.dat'
+    classy.cmin = 3.13
+    # classy.bbn = '/home/harry/Desktop/class/bbn/sBBN.dat'
+    classy.bbn = '/home/mootovaloo/Desktop/class/external/bbn/sBBN.dat'
     classy.k_pivot = 0.05
     classy.Omega_k = 0.0
     classy.k_max_pk = 50
-    classy.z_max_pk = 5.0
+    classy.z_max_pk = 2.0
 
     # neutrino settings
     config.neutrino = neutrino = ConfigDict()
@@ -86,9 +85,9 @@ def get_config() -> ConfigDict:
     emulator.lr = 1E-2
     emulator.nrestart = 3
     emulator.zmin = 0.0
-    emulator.zmax = 5.0
+    emulator.zmax = classy.z_max_pk
     emulator.kmin = 5E-4
-    emulator.kmax = 50
+    emulator.kmax = classy.k_max_pk
     emulator.grid_nz = 20
     emulator.grid_nk = 40
 

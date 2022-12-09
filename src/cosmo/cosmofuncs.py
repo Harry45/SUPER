@@ -6,10 +6,33 @@ Project: Implementation of a scalable GP approach for emulating power spectra
 Script: Functions related to the cosmology, for example, analytical baryon feedback.
 """
 import torch
+import numpy as np
 from ml_collections.config_dict import ConfigDict
 
 # our script and functions
 from configemu import BF_PARAMS
+
+
+def sigma_eight(cosmo: dict) -> float:
+    """Calculates sigma_8 from a dictionary containing the cosmological parameters
+
+    Args:
+        cosmo (dict): A dictionary containing omega_cdm, omega_b, S_8, h
+
+    Returns:
+        float: the value of sigma_8
+    """
+    cdm = cosmo['omega_cdm']
+    baryon = cosmo['omega_b']
+    neutrino = cosmo['m_ncdm'] / 93.14
+
+    # omega_matter (contains factor h**2)
+    omega_matter = cdm + baryon + neutrino
+
+    # actual omega_matter
+    omega_matter /= cosmo['h']**2
+
+    return cosmo['S_8'] * np.sqrt(0.3 / omega_matter)
 
 
 def analytical_baryon_feedback(config: ConfigDict, wavenumber: torch.Tensor, redshift: torch.Tensor,

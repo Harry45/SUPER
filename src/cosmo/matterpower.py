@@ -8,10 +8,12 @@ Script: Script for generating the linear and non-linear matter power spectrum.
 
 from ml_collections.config_dict import ConfigDict
 from classy import Class  # pylint: disable-msg=E0611
+import numpy as np
 
 # our scripts and functions
 from utils.logger import get_logger
 from .argsgen import class_args, neutrino_args, params_args
+from .cosmofuncs import sigma_eight
 
 
 def class_compute(config: ConfigDict, cosmology: dict) -> Class:
@@ -33,8 +35,12 @@ def class_compute(config: ConfigDict, cosmology: dict) -> Class:
 
     arg_params = params_args(config, cosmology)
 
-    logger = get_logger(config, 'class')
-    logger.info('Running Class at %s', cosmology)
+    if 'S_8' in config.parameters.names:
+        arg_params['sigma8'] = sigma_eight(arg_neutrino | arg_params)
+        del arg_params['S_8']
+
+    # logger = get_logger(config, 'class')
+    # logger.info('Running Class at %s', cosmology)
 
     # Run Class
     class_module = Class()
@@ -56,3 +62,51 @@ def delete_module(class_module: Class):
     class_module.empty()
 
     del class_module
+
+
+def calculate_pk_fixed_redshift(config: ConfigDict, cosmology: dict, redshift: float = 0) -> np.ndarray:
+    """Calculates the linear or non-linear matter power spectrum
+
+    Args:
+        config (ConfigDict): the set of configurations for running CLASS
+        cosmology (dict): a dictionary consisting of the cosmological parameters
+        redshift (float): the redshift at which we want to calculate the power spectrum
+
+    Returns:
+        np.ndarray: the power spectrum at a fixed redshift
+    """
+    wavenumbers = np.geomspace(config.emulator.kmin, config.emulator.kmax, config.emulator.grid_nk)
+    powerspec = np.zeros(config.emulator.grid_nk)
+    module = class_compute(config, cosmology)
+
+    for i, wav in enumerate(wavenumbers):
+        if config.boolean.linearpk:
+            powerspec[i] = module.pk_lin(wav, redshift)
+        else:
+            powerspec[i] = module.pk(wav, redshift)
+    delete_module(module)
+    return powerspec
+
+
+def calculate_pk(config: ConfigDict, cosmology: dict) -> np.ndarray:
+    """Calculates the linear or non-linear matter power spectrum
+
+    Args:
+        config (ConfigDict): the set of configurations for running CLASS
+        cosmology (dict): a dictionary consisting of the cosmological parameters
+
+    Returns:
+        np.ndarray: the power spectrum of size Nk x Nz, based on the number of values of k and z in the configuration.
+    """
+    module = class_compute(config, cosmology)
+    wavenumbers = np.geomspace(config.emulator.kmin, config.emulator.kmax, config.emulator.grid_nk)
+    redshifts = np.linspace(config.emulator.zmin, config.emulator.zmax, config.emulator.grid_nz)
+    powerspec = np.zeros((config.emulator.grid_nk, config.emulator.grid_nz))
+    for i in range(config.emulator.grid_nk):
+        for j in range(config.emulator.grid_nz):
+            if config.boolean.linearpk:
+                powerspec[i, j] = module.pk_lin(wavenumbers[i], redshifts[j])
+            else:
+                powerspec[i, j] = module.pk(wavenumbers[i], redshifts[j])
+    delete_module(module)
+    return powerspec
